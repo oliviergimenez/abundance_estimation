@@ -9,7 +9,7 @@ output: word_document
 
 Lately, I have found myself repeating the same analyses again and again to estimate population size from capture-recapture models, and the Cormack-Jolly-Seber (CJS) model in particular. I do not intend here to provide extensive details on this model and its variants. It is just a basic attempt to put together some R code to avoid spending hours digging up in my files how to do this analysis.
 
-I use [RMark](http://www.phidot.org/software/mark/docs/book/pdf/app_3.pdf) because everything can be done in R, and it's cool for reproducible research. But other pieces of software are fine too. I consider simple CJS models and models with transience. In passing, I also fit models with heterogeneity in the detection process with finite mixtures and an individual random effect. The bootstrap is used to obtain confidence intervals.
+I use [RMark](http://www.phidot.org/software/mark/docs/book/pdf/app_3.pdf) because everything can be done in R, and it's cool for reproducible research. But other pieces of software are fine too. I consider simple CJS models and models with transience. In passing, I also fit models with heterogeneity in the detection process with an individual random effect. The bootstrap is used to obtain confidence intervals.
 
 I have ignored multi-model inference for simplicity. However the bootstrap can be used to perform model selection (e.g., Buckland et al. 1997). 
 
@@ -299,11 +299,196 @@ mean(tau)
 quantile(tau,probs=c(2.5,97.5)/100)
 ```
 
+## Dealing with heterogeneity
+
+As we said before, heterogeneity in the detection process may cause bias in abundance estimates (e.g., [Cubaynes et al. 2010)](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Cubaynesetal2010.pdf). I will consider here two ways of dealing with this issue: individual random-effect models and finite-mixture models.
+
+### Individual random effect model 
+
+Let's use the Humpback whale dataset of the first section. 
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+library(RMark)
+hw.dat = import.chdata("humpbackwhaleMaySep20062013.txt", header = F, field.names = c("ch"), field.types = NULL)
+summary(hw.dat)
+attach(hw.dat)
+```
+
+We use a Cormack-Jolly-Seber model with a random effect in the detection process [(Gimenez and Choquet 2010)](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Gimenez%26Choquet2010Ecology.pdf). The model structure is specified with the `model="CJSRandom"` option. 
+
+```{r, message=FALSE, warning=FALSE}
+hw.proc <- process.data(hw.dat, model="CJSRandom")
+hw.ddl <- make.design.data(hw.proc)
+```
+
+Then we specify the effects on survival and detection probabilities. By default, because we use the random structure in MARK, there is a random effect on both parameters, ie these probabilities are drawn from a normal distribution with a mean and a standard deviation. We fix the standard deviation of the random effect on survival to 0 to fit a model with a constant survival. In contrast, we let MARK estimate both parameters of the random effect for the recapture probability.
+
+```{r, message=FALSE, warning=FALSE}
+# mean survival
+phi.ct = list(formula=~1) # constant
+# standard deviation of the random effect on survival is fixed to 0
+# in other words, no random effect on survival
+sigmaphi.fixed=list(formula=~1,fixed=0)
+
+# mean recapture probability
+p.dot=list(formula=~1)
+# standard deviation of the random effect on recapture
+sigmap.dot=list(formula=~1)
+```
+
+Let's roll and fit this model.
+
+```{r, message=FALSE, warning=FALSE}
+model.re = mark(hw.proc,hw.ddl,model.parameters=list(Phi=phi.ct,p=p.dot,sigmap=sigmap.dot,sigmaphi=sigmaphi.fixed),output = FALSE,delete=T)
+```
+
+Let's have a look to the parameter estimates:
+
+```{r, message=FALSE, warning=FALSE}
+mle_p = get.real(model.re,"p", se= TRUE)[1,c('estimate','se','lcl','ucl')]
+sigma_p = get.real(model.re,"sigmap", se= TRUE)[c('estimate','se','lcl','ucl')]
+phi = get.real(model.re,"Phi", se= TRUE)[1,c('estimate','se','lcl','ucl')]
+
+mle_p
+sigma_p
+phi
+```
+
+To test whether the random effect is significant, in other words to test the null hypothesis that the standard deviation of the random effect is null, we need to carry out a likelihood ratio test (LRT). The asymptotic behavior of the LRT statistic is a bit weird in that particular situation (see [Gimenez and Choquet 2010](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Gimenez%26Choquet2010Ecology.pdf) for details). 
+
+We first need the deviance of the two models with and without the random effect. To get the deviance of the model without random effect, we can use the results from the first section above, or run a model with the random structure by fixing the standard deviation of the random effect on recapture probability to 0. For the sake of complexity, let's use the latter option:
+
+```{r, message=FALSE, warning=FALSE}
+phi.ct = list(formula=~1) # constant
+sigmaphi.fixed=list(formula=~1,fixed=0)
+p.dot=list(formula=~1)
+sigmap.fixed=list(formula=~1,fixed=0)
+model.without.re = mark(hw.proc,hw.ddl,model.parameters=list(Phi=phi.ct,p=p.dot,sigmap=sigmap.fixed,sigmaphi=sigmaphi.fixed),output = FALSE,delete=T)
+```
+
+Then we can form the LRT statistic:
+
+```{r, message=FALSE, warning=FALSE}
+dev_model_with_RE = model.re$results$deviance
+dev_model_without_RE = model.without.re$results$deviance
+LRT = dev_model_without_RE - dev_model_with_RE
+```
+
+And calculate the p-value of the test:
+```{r, message=FALSE, warning=FALSE}
+1-pchisq(LRT,1)
+```
+
+The test is highly significant, we reject the null hypothesis that the standard deviation is 0, therefore there seems to be heterogeneity as detection by the random effect.
+
+From there, one can use the bootstrap as in the first section to estimate abundance along with its confidence interval using the recapture probability estimate `mle_p`. This value was calculated for us by MARK as the inverse [reciprocal function] logit of the mean recapture probability. Have a look to the results: 
+
+```{r, message=FALSE, warning=FALSE}
+model.re$results$beta
+```
+
+The mean value of the random effect on the recapture is `p:(Intercept)`. 
+If you apply the standard $1/(1+exp(-x))$ transformation, you obtain `mle_p`.
+
+```{r, message=FALSE, warning=FALSE}
+mean_p = model.re$results$beta[3,1] # extract the mean value of the random effect
+1/(1+exp(-mean_p)) # calculate by hand
+mle_p[1] # produce by MARK
+```
+
+### Finite mixture models
+
+Here, we estimate abundance while accounting for heterogeneity in the detection process using a model with finite mixture (see first section above). To do so, we follow [Cubaynes et al. (2010)](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Cubaynesetal2010.pdf) who extended the appraoch developed by Shirley Pledger and colleagues to account for heterogeneity to estimate abundance.
+
+For illustration, let's first fit a model with heterogeneity in the recapture probability, with time-dependent survival and constant recapture probabilities. As usual, we first load the `RMark` package and read in the data.
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# load RMark package
+library(RMark)
+# read in data
+hw.dat = import.chdata("humpbackwhaleMaySep20062013.txt", header = F, field.names = c("ch"), field.types = NULL)
+summary(hw.dat)
+attach(hw.dat)
+```
+
+Then we define the model structure, by using the `model="CJSMixture"` option.
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+hw.proc = process.data(hw.dat, model="CJSMixture")
+hw.ddl = make.design.data(hw.proc)
+```
+
+We also define the effect on the parameters. Time-dependent survival, two-finite mixture on the recapture probability and a constant proportion of individual in each class.
+
+```{r, message=FALSE, warning=FALSE}
+# survival
+phi.time = list(formula=~time) # constant
+# recapture
+p.mix = list(formula=~mixture) # mixture
+# mixture proportion
+pi.dot=list(formula=~1) # constant
+```
+
+Let's fit that model:
+
+```{r, message=FALSE, warning=FALSE}
+model.het = mark(hw.proc,hw.ddl,model.parameters=list(Phi=phi.time,p=p.mix,pi=pi.dot),output = FALSE,delete=T)
+```
+
+Now how to decide whether heterogeneity is important? The cool thing is that it's fine to use the AIC to compare models with/without heterogeneity [(Cubaynes et al. 2012)](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Cubaynesetal2011MEE.pdf). So let's fit the same model with homogeneous recapture probability and compare the AIC values:
+
+```{r, message=FALSE, warning=FALSE}
+hw.proc = process.data(hw.dat, model="CJS")
+hw.ddl = make.design.data(hw.proc)
+phi.time = list(formula=~time) # year effect
+p.ct = list(formula=~1) # constant
+model.hom = mark(hw.proc,hw.ddl,model.parameters=list(Phi=phi.time,p=p.ct),output = FALSE,delete=T)
+```
+
+Compare the AIC values:
+
+```{r, message=FALSE, warning=FALSE}
+summary(model.het)$AICc
+summary(model.hom)$AICc
+```
+
+Sounds like there is some heterogeneity. Let's have a look to the parameter estimates of the model with heterogeneity:
+
+```{r, message=FALSE, warning=FALSE}
+model.het$results$real
+```
+
+The proportion of individuals in mixture 1 is:
+```{r, message=FALSE, warning=FALSE}
+prop = model.het$results$real[1,1]
+prop
+```
+
+with detection probability:
+```{r, message=FALSE, warning=FALSE}
+p1 = model.het$results$real[9,1]
+p1
+```
+
+For the other mixture, the proportion is the complementary and the detection probability is:
+```{r, message=FALSE, warning=FALSE}
+p2 = model.het$results$real[10,1]
+p2
+```
+
+By the way, survival is:
+```{r, message=FALSE, warning=FALSE}
+phi = model.het$results$real[2:8,1]
+phi
+```
+
+Now let's the bootstrap to get confidence intervals (and median) for abundance. IN PROGRESS (means I'm debugging...).
+
 ## To do
 
 * multi-model inference using bootstrap à la Buckland
+* add heterogeneity à la Pledger
 * add complete reference for Chiara's paper once published
-* estimate abundance when heterogeneity in detection
 * add Jolly-Seber as in [Karamanlidis et al. (2015)](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Karamanlidisetal2015-Arcturos.pdf)
 * add robust-design as in Nina and Blaise papers.
 
