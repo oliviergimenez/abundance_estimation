@@ -9,13 +9,9 @@ output: word_document
 
 Lately, I have found myself repeating the same analyses again and again to estimate population size from capture-recapture models, and the Cormack-Jolly-Seber (CJS) model in particular. I do not intend here to provide extensive details on this model and its variants. It is just a basic attempt to put together some R code to avoid spending hours digging up in my files how to do this analysis.
 
-I use [RMark](http://www.phidot.org/software/mark/docs/book/pdf/app_3.pdf) because everything can be done in R, and it's cool for reproducible research. But other pieces of software are fine too. I consider simple CJS models and models with transience. In passing, I also fit models with heterogeneity in the detection process with an individual random effect. The bootstrap is used to obtain confidence intervals.
+I use [RMark](http://www.phidot.org/software/mark/docs/book/pdf/app_3.pdf) because everything can be done in R, and it's cool for reproducible research. But other pieces of software are fine too. I consider simple CJS models and models with transience. In passing, I also fit models with heterogeneity in the detection process with finite mixtures and an individual random effect. The bootstrap is used to obtain confidence intervals.
 
 I have ignored multi-model inference for simplicity. However the bootstrap can be used to perform model selection (e.g., Buckland et al. 1997). 
-
-The data and codes are part of a manuscript that is currently in review:
-
-> Chiara G. Bertulli, Loreleï Guéry, Niall McGinty, Ailie Suzuki, Naomi Brannan, Tania Marques, Marianne H. Rasmussen, Olivier Gimenez (in review). Abundance estimation of photographically identified common minke whales, white-beaked dolphins and humpback whales in Icelandic coastal waters using capture-recapture methods. 
 
 ## Abundance estimates from a Cormack-Jolly-Seber model
 
@@ -25,10 +21,10 @@ First, let's load the RMark package for analysing capture-recapture data by call
 library(RMark)
 ```
 
-The data come from an opportunistic monitoring through which photos were taken of Humpback whales in the Icelandic waters. More details in Chiara's paper cited above. Each row is an individual that has been detected (coded as a 1) or non-detected (coded as a 0) through photo-identification over the years in columns. Have a look to the file in your favorite text editor. Other formats are fine.
+Each row is an individual that has been detected (coded as a 1) or non-detected (coded as a 0) over the years in columns. Have a look to the file `dataset1.txt` in your favorite text editor. Other formats are fine.
 
 ```{r, message=FALSE, warning=FALSE}
-hw.dat = import.chdata("humpbackwhaleMaySep20062013.txt", header = F, field.names = c("ch"), field.types = NULL)
+hw.dat = import.chdata("dataset1.txt", header = F, field.names = c("ch"), field.types = NULL)
 summary(hw.dat)
 attach(hw.dat)
 ```
@@ -148,18 +144,18 @@ ci_hw
 A plot:
 
 ```{r, message=FALSE, warning=FALSE}
-plot(1:(nb_years-1),estim_abundance, col="black", type="n", pch=21, xlab="Years", lty=3, ylab="Estimated abundance", main="Minke whales",lwd=3,ylim=c(0,150))
+plot(1:(nb_years-1),estim_abundance, col="black", type="n", pch=21, xlab="Years", lty=3, ylab="Estimated abundance", main="dataset 1",lwd=3,ylim=c(0,150))
 polygon(c(rev(1:(nb_years-1)), 1:(nb_years-1)), c(rev(ci_hw[2,]), ci_hw[1,]), col = 'grey80', border = NA)
 lines(1:(nb_years-1), estim_abundance, col="black",lty=3,type='o',lwd=3,pch=21)
 ```
 
 # What if transience occurs?
 
-We now analyse data on Minke whales.
+We now analyse another dataset `dataset2.txt`.
 
 ```{r, echo=TRUE, message=FALSE, warning=FALSE}
 library(RMark)
-mw.dat = import.chdata("minkewhalesAprAug20082013.txt", header = F, field.names = c("ch"), field.types = NULL)
+mw.dat = import.chdata("dataset2.txt", header = F, field.names = c("ch"), field.types = NULL)
 summary(mw.dat)
 attach(mw.dat)
 ```
@@ -226,7 +222,7 @@ estim_abundance = n_obs[-1]/ptable$estimate[1]
 estim_abundance
 ```
 
-We use a boostrap approach to get an idea of the uncertainty surrounding these estimates, in particular to obtain the confidence intervals. The bootstrap approach was proposed by [Madon et al. (2013)](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Madonetal2012MMS.pdf). Roger Pradel discovered a bug in the appendix that he corrected. He also substantially simplified the code. I found a minor problem in Roger's code that I corrected. I know, version control would be great... 
+We use a boostrap approach to get an idea of the uncertainty surrounding these estimates, in particular to obtain the confidence intervals. The bootstrap approach was proposed by [Madon et al. (2013)](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Madonetal2012MMS.pdf). Roger Pradel discovered a bug in the appendix that he corrected. He also substantially simplified the code. I found a minor problem in Roger's code that I corrected. I know, version control would have been great... 
 
 We first define a few quantities. See previous section for details.
 
@@ -287,7 +283,7 @@ popRci
 A plot:
 
 ```{r, message=FALSE, warning=FALSE}
-plot(1:(nb_years-1),popRmean, col="black", type="n", pch=21, xlab="Years", lty=3, ylab="Estimated abundance", main="Minke whales",lwd=3,ylim=c(0,120))
+plot(1:(nb_years-1),popRmean, col="black", type="n", pch=21, xlab="Years", lty=3, ylab="Estimated abundance", main="dataset 2",lwd=3,ylim=c(0,120))
 polygon(c(rev(1:(nb_years-1)), 1:(nb_years-1)), c(rev(popRci[2,]), popRci[1,]), col = 'grey80', border = NA)
 lines(1:(nb_years-1), popRmean, col="black",lty=3,type='o',lwd=3,pch=21)
 ```
@@ -305,11 +301,11 @@ As we said before, heterogeneity in the detection process may cause bias in abun
 
 ### Individual random effect model 
 
-Let's use the Humpback whale dataset of the first section. 
+Let's use `dataset1.txt` of the first section. 
 
 ```{r, echo=TRUE, message=FALSE, warning=FALSE}
 library(RMark)
-hw.dat = import.chdata("humpbackwhaleMaySep20062013.txt", header = F, field.names = c("ch"), field.types = NULL)
+hw.dat = import.chdata("dataset1.txt", header = F, field.names = c("ch"), field.types = NULL)
 summary(hw.dat)
 attach(hw.dat)
 ```
@@ -356,7 +352,7 @@ phi
 
 To test whether the random effect is significant, in other words to test the null hypothesis that the standard deviation of the random effect is null, we need to carry out a likelihood ratio test (LRT). The asymptotic behavior of the LRT statistic is a bit weird in that particular situation (see [Gimenez and Choquet 2010](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Gimenez%26Choquet2010Ecology.pdf) for details). 
 
-We first need the deviance of the two models with and without the random effect. To get the deviance of the model without random effect, we can use the results from the first section above, or run a model with the random structure by fixing the standard deviation of the random effect on recapture probability to 0. For the sake of complexity, let's use the latter option:
+We first need the deviance of the two models with and without the random effect. To get the deviance of the model without random effect, we could use the results from the first section above, or run a model with the random structure by fixing the standard deviation of the random effect on recapture probability to 0. For the sake of complexity (...), let's use the latter option:
 
 ```{r, message=FALSE, warning=FALSE}
 phi.ct = list(formula=~1) # constant
@@ -393,36 +389,36 @@ If you apply the standard $1/(1+exp(-x))$ transformation, you obtain `mle_p`.
 ```{r, message=FALSE, warning=FALSE}
 mean_p = model.re$results$beta[3,1] # extract the mean value of the random effect
 1/(1+exp(-mean_p)) # calculate by hand
-mle_p[1] # produce by MARK
+mle_p[1] # produced by MARK
 ```
 
 ### Finite mixture models
 
-Here, we estimate abundance while accounting for heterogeneity in the detection process using a model with finite mixture (see first section above). To do so, we follow [Cubaynes et al. (2010)](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Cubaynesetal2010.pdf) who extended the appraoch developed by Shirley Pledger and colleagues to account for heterogeneity to estimate abundance.
+Here, we estimate abundance while accounting for heterogeneity in the detection process using a model with finite mixture (see first section above). To do so, we follow [Cubaynes et al. (2010)](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Cubaynesetal2010.pdf) who extended the appraoch developed by Shirley Pledger and colleagues to account for heterogeneity to estimate abundance. Please, have a look to this paper and its appendix for details about the methods and formulas.
 
-For illustration, let's first fit a model with heterogeneity in the recapture probability, with time-dependent survival and constant recapture probabilities. As usual, we first load the `RMark` package and read in the data.
+For illustration, let's first fit a model with heterogeneity in the recapture probability, with time-dependent survival and constant recapture probabilities. As usual, we first load the `RMark` package and read in the data. Let's use `dataset2.txt` of the second section. 
 
 ```{r, echo=TRUE, message=FALSE, warning=FALSE}
 # load RMark package
 library(RMark)
 # read in data
-hw.dat = import.chdata("humpbackwhaleMaySep20062013.txt", header = F, field.names = c("ch"), field.types = NULL)
-summary(hw.dat)
-attach(hw.dat)
+mw.dat = import.chdata("dataset2.txt", header = F, field.names = c("ch"), field.types = NULL)
+summary(mw.dat)
+attach(mw.dat)
 ```
 
 Then we define the model structure, by using the `model="CJSMixture"` option.
 
 ```{r, echo=TRUE, message=FALSE, warning=FALSE}
-hw.proc = process.data(hw.dat, model="CJSMixture")
-hw.ddl = make.design.data(hw.proc)
+mw.proc = process.data(mw.dat, model="CJSMixture")
+mw.ddl = make.design.data(mw.proc)
 ```
 
-We also define the effect on the parameters. Time-dependent survival, two-finite mixture on the recapture probability and a constant proportion of individual in each class.
+We also define the effect on the parameters. Constant survival, two-finite mixture on the recapture probability and a constant proportion of individual in each class.
 
 ```{r, message=FALSE, warning=FALSE}
 # survival
-phi.time = list(formula=~time) # constant
+phi.ct = list(formula=~1) # constant
 # recapture
 p.mix = list(formula=~mixture) # mixture
 # mixture proportion
@@ -432,17 +428,15 @@ pi.dot=list(formula=~1) # constant
 Let's fit that model:
 
 ```{r, message=FALSE, warning=FALSE}
-model.het = mark(hw.proc,hw.ddl,model.parameters=list(Phi=phi.time,p=p.mix,pi=pi.dot),output = FALSE,delete=T)
+model.het = mark(mw.proc,mw.ddl,model.parameters=list(Phi=phi.ct,p=p.mix,pi=pi.dot),output = FALSE,delete=T)
 ```
 
 Now how to decide whether heterogeneity is important? The cool thing is that it's fine to use the AIC to compare models with/without heterogeneity [(Cubaynes et al. 2012)](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Cubaynesetal2011MEE.pdf). So let's fit the same model with homogeneous recapture probability and compare the AIC values:
 
 ```{r, message=FALSE, warning=FALSE}
-hw.proc = process.data(hw.dat, model="CJS")
-hw.ddl = make.design.data(hw.proc)
-phi.time = list(formula=~time) # year effect
-p.ct = list(formula=~1) # constant
-model.hom = mark(hw.proc,hw.ddl,model.parameters=list(Phi=phi.time,p=p.ct),output = FALSE,delete=T)
+mw.proc2 = process.data(mw.dat, model="CJS")
+mw.ddl2 = make.design.data(mw.proc2)
+model.hom = mark(mw.proc2,mw.ddl2,model.parameters=list(Phi=phi.ct,p=p.ct),output = FALSE,delete=T)
 ```
 
 Compare the AIC values:
@@ -466,31 +460,119 @@ prop
 
 with detection probability:
 ```{r, message=FALSE, warning=FALSE}
-p1 = model.het$results$real[9,1]
+p1 = model.het$results$real[3,1]
 p1
 ```
 
 For the other mixture, the proportion is the complementary and the detection probability is:
 ```{r, message=FALSE, warning=FALSE}
-p2 = model.het$results$real[10,1]
+p2 = model.het$results$real[4,1]
 p2
 ```
 
-By the way, survival is:
+Lastly, survival is:
 ```{r, message=FALSE, warning=FALSE}
-phi = model.het$results$real[2:8,1]
+phi = model.het$results$real[2,1]
 phi
 ```
 
-Now let's the bootstrap to get confidence intervals (and median) for abundance. IN PROGRESS (means I'm debugging...).
+Now let's use the bootstrap to get confidence intervals (and median) for abundance.
+
+We will need a function to spot the first detections in the encounter histories:
+```{r, message=FALSE, warning=FALSE}
+firstdetection = function(x){
+  b = sort(x,index.return=T,decreasing=T)
+  res = b$ix[1]
+  return(res)}
+```
+
+We will also need to add spaces between the columns of the dataset:
+```{r, message=FALSE, warning=FALSE}
+mw.dat.spaces = matrix(as.numeric(unlist(strsplit(mw.dat$ch, ''))),nrow=nrow(mw.dat),byrow=T)
+```
+
+Let's run the bootstrap:
+
+```{r, message=FALSE, warning=FALSE}
+Nhet = NULL # initialization
+nb_bootstrap = 10 # nb of bootstrap iterations (should be 500 or 1000!)
+
+for (i in 1:nb_bootstrap){
+
+  # resample in original dataset
+  mask = sample.int(nrow(mw.dat.spaces),replace=T)
+  pseudodata = mw.dat.spaces[mask,]
+
+  # nb of ind detected per occasion
+  cijdata = apply(pseudodata,2,sum)
+
+  # first detection
+  d = apply(pseudodata,1,firstdetection)
+
+  # u (newly marked)
+  udata = NULL
+  for(kk in 1:ncol(pseudodata)) {udata[kk] = sum(d == kk)}
+
+  # m (already marked)
+  mdata = cijdata - udata
+
+  # delete first occasion
+  cij = cijdata[-1]
+  m = mdata[-1]
+  u = udata[-1]
+  
+  # expected newly marked (Cubaynes et al. 2010)
+  bigU <- matrix(0,nrow=length(p1),ncol=length(u)) # here length(p1) = 1, but if time-dependent, length(p1) > 1
+  for(zz in 1:ncol(bigU)) {
+    bigU[,zz] = (1-prop) * u[zz] / p2 + prop * u[zz] / p1
+    }
+  # expected already marked (Cubaynes et al. 2010)
+  # M2 = u1 (pi phi1 + (1-pi) phi1)
+  # M3 = u1 (pi phi1 phi2 + (1-pi) phi1 phi2) + u2 (pi phi2 + (1-pi) phi2)
+  # M4 = u1 (pi phi1 phi2 phi3 + (1-pi) phi1 phi2 phi3) + u2 (pi phi2 phi3 + (1-pi) phi2 phi3) + u3 (pi phi3 + (1-pi) phi3)
+  # ...
+  surv <- matrix(rep(phi,length(u)),ncol=length(u),byrow=T) # to be modified if phi is time-dependent
+  bigM <- matrix(0,nrow=nrow(surv),ncol=ncol(surv))
+  for(ii in 1:nrow(bigM)) {
+    for(t in 1:ncol(bigM)) {
+      temp <- rep(NA,t)
+      for(j in 1:t) {
+        temp[j] <- u[j] * ((1-prop) * prod(surv[ii,1:j]) + prop * prod(surv[ii,1:j]))
+        }
+      bigM[ii,t] = sum(temp)
+    }
+    }
+  # compute abundance estimate for current bootstrap sample
+  Nhet <- rbind(Nhet,bigU + bigM)
+}
+```
+
+Get median and confidence interval:
+```{r, message=FALSE, warning=FALSE}
+res <- apply(Nhet,2,quantile,c(2.5,50,97.5)/100)
+res
+```
+
+Let's do a nice plot:
+
+```{r, message=FALSE, warning=FALSE}
+library(ggplot2)
+mp = data.frame(year = 1:ncol(Nhet), Nhat = res[2,])
+N = nrow(mp)
+predframe <- with(mp,data.frame(year,Nhat,lwr=res[1,],upr=res[3,]))
+(p1 <- ggplot(mp, aes(year, Nhat))+
+    geom_point()+
+    geom_line(data=predframe)+
+    geom_ribbon(data=predframe,aes(ymin=lwr,ymax=upr),alpha=0.3)
+    + ylab("Estimated abundance") + xlab("Year"))
+```
 
 ## To do
 
+* check the calculations for `bigU` and `bigM` and make them generic (what if survival is time-dependen?) 
 * multi-model inference using bootstrap à la Buckland
-* add heterogeneity à la Pledger
-* add complete reference for Chiara's paper once published
 * add Jolly-Seber as in [Karamanlidis et al. (2015)](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Karamanlidisetal2015-Arcturos.pdf)
-* add robust-design as in Nina and Blaise papers.
+* add robust-design as in papers currently in reviews (including model selection with bootstrap).
 
 ## References
 
