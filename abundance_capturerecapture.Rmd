@@ -9,9 +9,7 @@ output: word_document
 
 Lately, I have found myself repeating the same analyses again and again to estimate population size from capture-recapture models, and the Cormack-Jolly-Seber (CJS) model in particular. I do not intend here to provide extensive details on this model and its variants. It is just a basic attempt to put together some R code to avoid spending hours digging up in my files how to do this analysis.
 
-I use [RMark](http://www.phidot.org/software/mark/docs/book/pdf/app_3.pdf) because everything can be done in R, and it's cool for reproducible research. But other pieces of software are fine too. I consider simple CJS models and models with transience. In passing, I also fit models with heterogeneity in the detection process with finite mixtures and an individual random effect. The bootstrap is used to obtain confidence intervals.
-
-I have ignored multi-model inference for simplicity. However the bootstrap can be used to perform model selection (e.g., Buckland et al. 1997). 
+I use [RMark](http://www.phidot.org/software/mark/docs/book/pdf/app_3.pdf) because everything can be done in R, and it's cool for reproducible research. But other pieces of software are fine too. I consider simple CJS models and models with transience. In passing, I also fit models with heterogeneity in the detection process with finite mixtures and an individual random effect. The bootstrap is used to obtain confidence intervals. I also illustrate multi-model inference and use the bootstrap to perform model selection (Buckland et al. 1997). 
 
 ## Abundance estimates from a Cormack-Jolly-Seber model
 
@@ -149,7 +147,7 @@ polygon(c(rev(1:(nb_years-1)), 1:(nb_years-1)), c(rev(ci_hw[2,]), ci_hw[1,]), co
 lines(1:(nb_years-1), estim_abundance, col="black",lty=3,type='o',lwd=3,pch=21)
 ```
 
-# What if transience occurs?
+## What if transience occurs?
 
 We now analyse another dataset `dataset2.txt`.
 
@@ -567,10 +565,95 @@ predframe <- with(mp,data.frame(year,Nhat,lwr=res[1,],upr=res[3,]))
     + ylab("Estimated abundance") + xlab("Year"))
 ```
 
+## Model-averaging abundance estimates
+
+If you remember the first section, the 4 models we fitted to `dataset1` had close AICc values. In this situation, multi-model inference is recommended. Following Buckland et al. (1997), we use the bootstrap to obtain model-averaged abundance estimates.  
+
+First, load RMark and read in that data:
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+rm(list=ls(all=TRUE))
+library(RMark)
+hw.dat = import.chdata("dataset1.txt", header = F, field.names = c("ch"), field.types = NULL)
+```
+
+Define the effects on parameters:
+```{r, message=FALSE, warning=FALSE}
+# define parameter structure
+Phi.ct = list(formula=~1) # constant survival
+Phi.time = list(formula=~time) # year effect on survival
+p.ct = list(formula=~1) # constant detection
+p.time = list(formula=~time) # year effect on detection
+```
+
+Let's define a few quantities we will need later on:
+```{r, message=FALSE, warning=FALSE}
+nb_bootstrap = 10 # use 500 or 1000 instead
+nb_years = 8
+target = data.frame(hw.dat,stringsAsFactors=F)
+set.seed(5)
+pseudo = target # initialization
+# storage quantities
+outlist <- vector("list", nb_bootstrap)
+outdata <- vector("list", nb_bootstrap)
+outreal <- vector("list", nb_bootstrap)
+outnhat <- vector("list", nb_bootstrap)
+```
+
+Let's run the boostrap:
+```{r, message=FALSE, warning=FALSE}
+for (k in 1:nb_bootstrap){
+  # resample in the original dataset with replacement
+  pseudo$ch = sample(target$ch, replace=T)
+  # define model structure
+  hw.proc = process.data(pseudo, model="CJS")
+  hw.ddl = make.design.data(hw.proc)
+  # fit all 4 models with Mark
+  # constant survival, constant recapture
+  Model.1 = mark(hw.proc,hw.ddl,model.parameters=list(Phi=Phi.ct,p=p.ct),output = FALSE,delete=T)
+  # constant survival, time-dependent recapture
+  Model.2 = mark(hw.proc,hw.ddl,model.parameters=list(Phi=Phi.ct,p=p.time),output = FALSE,delete=T)
+  # time-dependent survival, constant recapture
+  Model.3 = mark(hw.proc,hw.ddl,model.parameters=list(Phi=Phi.time,p=p.ct),output = FALSE,delete=T)
+  # time-dependent survival, time-dependent recapture
+  Model.4 = mark(hw.proc,hw.ddl,model.parameters=list(Phi=Phi.time,p=p.time),output = FALSE,delete=T)
+  # gather results
+  all.models <- collect.models()
+
+  # store bootstrap sample
+  outdata[[k]] <- pseudo
+  outlist[[k]] <- all.models$model.table
+  
+  # get best model
+  ind_best_mod = row.names(all.models$model.table)[1]
+  name_best_mod = paste('Model.',ind_best_mod,sep='')
+  
+  # get recapture estimate from best model
+  # if constant, duplicate values
+  # if time-dep, take the whole vector
+  mle.p = get.real(get(name_best_mod),"p", se= TRUE)$estimate[1:(nb_years-1)]
+  outreal[[k]] = mle.p
+  
+  # get abundance estimate
+  allobs = gregexpr("1", pseudo$ch)
+  n = summary(as.factor(unlist(allobs)))
+  nhat = n[-1]/mle.p
+  outnhat[[k]] = nhat
+  }
+```
+
+Convert the list of abundance estimate in a matrix, and calculate quantiles over the bootstrap iterations:
+```{r, message=FALSE, warning=FALSE}
+res = matrix(unlist(outnhat),nrow=length(outnhat),byrow=T)
+apply(res,2,mean) # mean estimate
+apply(res,2,mean) # median estimate
+apply(res,2,quantile,probs=c(2.5,97.5)/100) # confidence interval
+```
+
+This is not exactly what Buckland et al. (1997) advocates, see last paragraph of section 3 in this paper, but this will do for now. 
+
 ## To do
 
 * check the calculations for `bigU` and `bigM` and make them generic (what if survival is time-dependen?) 
-* multi-model inference using bootstrap à la Buckland
 * add Jolly-Seber as in [Karamanlidis et al. (2015)](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Karamanlidisetal2015-Arcturos.pdf)
 * add robust-design as in papers currently in reviews (including model selection with bootstrap).
 
