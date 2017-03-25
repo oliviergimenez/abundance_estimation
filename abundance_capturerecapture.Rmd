@@ -2,7 +2,10 @@
 title: "Estimating abundance in open populations using capture-recapture models"
 author: "Olivier Gimenez"
 date: "August 8, 2016"
-output: word_document
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
 ---
 
 ## Introduction
@@ -96,7 +99,7 @@ We use a boostrap approach to get an idea of the uncertainty surrounding these e
 We first define the number of bootstrap iterations (10 here for the sake of illustration, should be 500 instead, or even 1000 if the computational burden is not too heavy), the number of capture occasions and format the dataset in which we'd like to resample (with replacement). This is non-parametric bootstrap (and alternative is parametric bootstrap where data are simulated using the model estimates). We also define a matrix `popsize` in which we will store the results, and we define the seed for simulations (to be able to replicate the results).
 
 ```{r, message=FALSE, warning=FALSE}
-nb_bootstrap = 10
+nb_bootstrap = 50
 nb_years = 8
 target = data.frame(hw.dat,stringsAsFactors=F)
 popsize = matrix(NA,nb_bootstrap, nb_years-1)
@@ -122,7 +125,7 @@ for (k in 1:nb_bootstrap){
   # resample in the original dataset with replacement
   pseudo$ch = sample(target$ch, replace=T)
   # fit model with Mark
-  res = mark(hw.proc,hw.ddl,model.parameters=list(Phi=phi.ct,p=p.time),delete=TRUE,output=FALSE)
+  res = mark(process.data(pseudo),hw.ddl,model.parameters=list(Phi=phi.ct,p=p.time),delete=TRUE,output=FALSE)
   # get recapture prob estimates
   ptable = get.real(res,"p", se= TRUE)
   # calculate the nb of recaptured individiduals / occasion
@@ -142,7 +145,7 @@ ci_hw
 A plot:
 
 ```{r, message=FALSE, warning=FALSE}
-plot(1:(nb_years-1),estim_abundance, col="black", type="n", pch=21, xlab="Years", lty=3, ylab="Estimated abundance", main="dataset 1",lwd=3,ylim=c(0,150))
+plot(1:(nb_years-1),estim_abundance, col="black", type="n", pch=21, xlab="Years", lty=3, ylab="Estimated abundance", main="dataset 1",lwd=3,ylim=c(0,300))
 polygon(c(rev(1:(nb_years-1)), 1:(nb_years-1)), c(rev(ci_hw[2,]), ci_hw[1,]), col = 'grey80', border = NA)
 lines(1:(nb_years-1), estim_abundance, col="black",lty=3,type='o',lwd=3,pch=21)
 ```
@@ -373,7 +376,7 @@ And calculate the p-value of the test:
 1-pchisq(LRT,1)
 ```
 
-The test is highly significant, we reject the null hypothesis that the standard deviation is 0, therefore there seems to be heterogeneity as detection by the random effect.
+The test is significant, we reject the null hypothesis that the standard deviation is 0, therefore there seems to be heterogeneity as detection by the random effect.
 
 From there, one can use the bootstrap as in the first section to estimate abundance along with its confidence interval using the recapture probability estimate `mle_p`. This value was calculated for us by MARK as the inverse [reciprocal function] logit of the mean recapture probability. Have a look to the results: 
 
