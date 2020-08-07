@@ -12,5 +12,5 @@ using i) individual random effect and ii) with finite mixtures. The bootstrap is
 ## To do
 
 * In the section with heterogeneity, check the calculations for `bigU` and `bigM` and make them generic.
-* add Jolly-Seber as in [Karamanlidis et al. (2015)](https://dl.dropboxusercontent.com/u/23160641/my-pubs/Karamanlidisetal2015-Arcturos.pdf).
+* add Jolly-Seber as in [Karamanlidis et al. (2015)](https://oliviergimenez.github.io/pubs/Karamanlidisetal2015-Arcturos.pdf).
 * add robust-design as in papers currently in reviews (including model selection with bootstrap).
